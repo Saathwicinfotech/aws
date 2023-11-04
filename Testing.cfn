@@ -1,0 +1,82 @@
+Resources:
+    cfnvpc:
+        Type: AWS::EC2::VPC
+        Properties:
+            EnableDnsHostnames: 'true'
+            CidrBlock: 10.30.0.0/16
+            EnableDnsSupport: 'true'
+            Tags:
+                - Key: stack
+                  Value: production
+    cfnigw:
+        Type: AWS::EC2::InternetGateway
+        DependsOn: cfnvpc
+    attachgateway:
+        Type: AWS::EC2::VPCGatewayAttachment
+        Properties:
+            VpcId: !Ref cfnvpc
+            InternetGatewayId: !Ref cfnigw
+    cfnsubnet:  
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref cfnvpc
+            CidrBlock: 10.30.50.0/24
+            AvailabilityZone: !Select [ 0, !GetAZs ]  
+    publicroutetable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            VpcId: !Ref cfnvpc
+    publicroute:
+        Type: AWS::EC2::Route
+        DependsOn: attachgateway
+        Properties:
+            RouteTableId: !Ref publicroutetable
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: !Ref cfnigw
+    mySubnetRouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref cfnsubnet
+            RouteTableId: !Ref publicroutetable
+    webserversg:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: "allow http and https and ssh traffic"
+            VpcId: !Ref cfnvpc
+            SecurityGroupIngress:
+                -   IpProtocol: tcp
+                    FromPort: 80
+                    ToPort: 80
+                    CidrIp: 0.0.0.0/0
+                -   IpProtocol: tcp
+                    FromPort: 443
+                    ToPort: 443
+                    CidrIp: 0.0.0.0/0
+                -   IpProtocol: tcp
+                    FromPort: 22
+                    ToPort: 22
+                    CidrIp: 0.0.0.0/0
+    cfnwebserver:
+        Type: AWS::EC2::Instance
+        Properties: 
+            ImageId: "ami-026ebd4cfe2c043b2"
+            KeyName: "mykeypair"
+            InstanceType: "t2.micro"
+            UserData: 
+                Fn::Base64: |
+                        #!/bin/bash
+                        sudo yum update -y
+                        sudo yum install -y httpd
+                        sudo systemctl start httpd.service
+                        sudo systemctl enable httpd.service
+            NetworkInterfaces: 
+                -   AssociatePublicIpAddress: "true"
+                    DeviceIndex: "0"
+                    GroupSet: 
+                    - !Ref webserversg
+                    SubnetId: !Ref cfnsubnet
+
+            
+
+
+
